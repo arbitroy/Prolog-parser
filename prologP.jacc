@@ -1,0 +1,249 @@
+// To compile and run this program using jacc and Sun's JDK:
+//
+//    jacc prologP.jacc
+//    javac Prolog.java PrologTokens.java
+//    java  Prolog
+//     
+//
+%{
+    // import necessary classes
+    import java.util.*;
+    import java.io.*;
+%}
+%class     Prolog
+%interface PrologTokens
+%semantic String: yylval
+%get       token
+%next      yylex()
+
+
+//Generate tokens
+%token CHAR INTEGER  CHARR '.' '(' ')' '?' ',' ':' '-' SYMBOLS ATOM STRING 
+
+%%
+program : clauselist query {System.out.println("Accepted clause: "+$1);}
+        | query {System.out.println("Accepted query: "+$1);}
+        ;
+clauselist : clause 
+           | clauselist clause 
+           ;
+
+
+clause : predicate
+       '.' 
+       | predicate 
+       ':''-' 
+       predicatelist
+       '.'
+       ;
+
+predicatelist : predicate
+              | predicatelist
+              ','
+              predicate
+	          ;
+
+predicate : atom
+          | atom
+          '(' 
+          termlist
+          ')'
+          ;
+
+termlist : term
+         | termlist 
+         ',' 
+         term
+         ;
+
+term : numeral
+     | atom 
+     | variable
+     | structure
+     ;
+
+structure : atom
+          '(' 
+          termlist
+          ')'
+          ;
+
+query :
+      '?'
+      '-' 
+      predicatelist
+      '.'
+      ;
+
+atom : smallatom
+     | 
+     '"' string
+     '"'
+     ;
+
+smallatom : lowercaseletter
+          | smallatom character
+          ;
+
+variable : uppercaseletter
+         | variable character
+         ;
+
+lowercaseletter : CHARR
+                ;
+
+uppercaseletter : CHAR
+                ;
+
+
+numeral : digit
+        | numeral digit
+        ;
+
+digit : INTEGER
+      ;
+
+character : lowercaseletter
+          | uppercaseletter
+          | digit 
+          | special
+          ;
+
+special :SYMBOLS;
+string : character
+         | string character
+         ;
+%%
+private void yyerror(String msg) {
+    System.out.println("ERROR: " + msg);
+    System.exit(1);
+  }
+private static int c;
+
+/** Read a single input character from standard input.
+   */
+  private void nextChar() {
+    if (c>=0) {
+      try {
+        c = System.in.read();
+	
+      } catch (Exception e) {
+        c = (-1);
+      }
+    }
+  }
+
+int token;
+String yylval;
+
+  /** Read the next token and return the
+   *  corresponding integer code.
+   */
+int yylex() {
+    for (;;) {
+        StringBuilder sb = new StringBuilder();
+        // Skip whitespace
+        while (c==' ' || c=='\n' || c=='\t' || c=='\r') {
+            nextChar();
+        }
+        if (c < 0) {
+            // end of input
+            return (token = ENDINPUT);
+        }
+        switch (c) {
+            case '(' : nextChar();
+                       return token='(';
+            case ')' : nextChar();
+                       token = ')';
+                       
+            case ',' : nextChar();
+                       return token = ',';
+            case '.' : nextChar();
+                       return token = '.';
+            case '?' : nextChar();
+		       token = SYMBOLS;
+    			if (c == '-') {
+        			nextChar();
+        			token = SYMBOLS;
+    			} else {
+        			yyerror("Invalid character: " + (char) c);
+    			}
+    			break;
+            case '%' : // skip until end of line
+                       while (c >= 0 && c != '\n') {
+                           nextChar();
+                       }
+                       break;
+            case '"' : // string
+
+                       sb.append((char) c);
+                       nextChar();
+                       while (c >= 0 && c != '"') {
+                           sb.append((char) c);
+                           nextChar();
+                       }
+                       if (c == '"') {
+                           sb.append((char) c);
+                           nextChar();
+                           yylval = sb.toString();
+                           return token = STRING;
+                       } else {
+                           yyerror("Unterminated string");
+                       }
+                       break;
+            case ':' :
+    			nextChar();
+    			token = SYMBOLS;
+    			if (c == '-') {
+        			nextChar();
+        			token = SYMBOLS;
+    			} else {
+        			yyerror("Invalid character: " + (char) c);
+    			}
+    			break;
+
+            default: {
+                    if (Character.isLowerCase(c) || c == '_') {
+                        StringBuilder sbuilder = new StringBuilder();
+                        // smallatom or keyword
+                        do {
+                            sbuilder.append((char) c);
+                            nextChar();
+                        } while (c >= 0 && (Character.isLowerCase(c) || Character.isDigit(c) || c == '_'));
+                        yylval = sbuilder.toString();
+                        String s = sbuilder.toString();
+                        return (token = CHARR);    
+                    } else if (Character.isUpperCase(c)) {
+                        StringBuilder builder = new StringBuilder();
+                        // variable
+                         do {
+                            builder.append((char) c);
+                            nextChar();
+                        } while (c >= 0 && Character.isLetterOrDigit(c));
+                        yylval = builder.toString();
+                        return (token = CHAR);
+                    } else if (Character.isDigit(c)) {
+                        // numeral
+                        do {
+                            sb.append((char) c);
+                            nextChar();
+                        } while (c >= 0 && Character.isDigit(c));
+                        yylval = sb.toString();
+                        return (token = INTEGER);
+                    } else {
+                        yyerror("Invalid character: " + (char) c);
+                        nextChar();
+                    }
+                }
+        }
+    }
+}
+
+
+
+public static void main(String[] args) {
+    	Prolog prolog = new Prolog();
+	prolog.nextChar(); // prime the character input stream
+	prolog.yylex(); 
+	prolog.parse();
+  }
